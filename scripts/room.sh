@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Swap, as the game's fast profile can want more than the runner's memory, and with `clean` the room
-# the runner's preinstalled tools take. A player's build skips the clean: the runner has disk enough, and
-# deleting them takes minutes.
 set -euo pipefail
 
 if [ "${1:-}" = clean ]; then
