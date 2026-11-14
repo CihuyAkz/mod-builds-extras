@@ -1,0 +1,19 @@
+name = "starling-mod-build-gateway"
+main = "src/index.js"
+compatibility_date = "2026-11-14"
+workers_dev = true
+
+[vars]
+# Repository containing this workflow and temporary build Release assets.
+GITHUB_REPO = "CihuyAkz/mod-builds-extras"
+GITHUB_REF = "main"
+GITHUB_WORKFLOW = "build.yml"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "starling-mod-build-gateway"
+database_id = "880f83a6-7224-4f65-9d6b-9aac5206c0a5"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["* * * * *"]
