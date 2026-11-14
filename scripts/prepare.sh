@@ -1,20 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMMIT=$(python3 - <<'PY'
-import json
-import os
-import re
-import sys
-
-versions = json.load(open("versions.json", encoding="utf-8"))
-version = os.environ["VERSION"]
-commit = versions.get(version)
-if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
-    sys.exit(f"No valid source commit is registered for version {version!r} in versions.json")
-print(commit)
-PY
-)
+COMMIT=$(python3 scripts/resolve_version.py "$VERSION")
 echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
 
 SOURCE_REPO=${SOURCE_REPO:-CihuyAkz/starling-extras}
