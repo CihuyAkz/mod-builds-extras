@@ -1,39 +1,47 @@
 name: base
 run-name: base ${{ inputs.version }}
-# The clean build cache of one version of the game, which every player's build starts from (build.yml):
-# the game at that version's commit, built with the one mod in its own repository. Only trusted code runs
-# here, and only here is the cache written. Run it once per release, after adding the version to
-# versions.json.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: A version in versions.json
+        description: A version registered in versions.json
         required: true
+        type: string
+      source:
+        description: Repository containing the game's source commit
+        required: true
+        default: CihuyAkz/starling-extras
+        type: string
       tools:
-        description: The branch of starling-client/starling with the build scripts
-        default: starling
+        description: Optional commit or branch containing the Android build scripts; blank uses the game commit
+        required: false
+        default: ""
+        type: string
 permissions:
   contents: read
-concurrency: base-${{ inputs.version }}
+concurrency:
+  group: base-${{ inputs.version }}
+  cancel-in-progress: false
 jobs:
   base:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       VERSION: ${{ inputs.version }}
+      SOURCE_REPO: ${{ inputs.source }}
+      TOOLS_REPO: ${{ inputs.source }}
       TOOLS: ${{ inputs.tools }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: The commit and the scripts
+      - name: Prepare source and build tools
         run: bash scripts/prepare.sh
-      - name: Rust, the Android tools and the crates
+      - name: Install Rust, Android tools and crates
         run: bash scripts/tools.sh
       - name: Make room
         run: bash scripts/room.sh clean
-      - name: Build
+      - name: Build clean cache
         env:
           MOD_BUILD_BASE: '1'
           MOD_BUILD_SECONDS: '14000'
