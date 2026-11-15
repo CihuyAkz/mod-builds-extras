@@ -26,7 +26,7 @@ on:
         default: ""
         type: string
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -38,6 +38,7 @@ jobs:
       TOOLS: ${{ inputs.tools }}
       ASK: ${{ inputs.ask }}
       GATEWAY: ${{ inputs.gateway }}
+      RELEASE_TAG: starling-mod-build-${{ inputs.ask }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +63,26 @@ jobs:
       - name: Compile native mods
         env:
           MOD_BUILD_SECONDS: '3200'
-        run: python3 tools/mod_build_once.py mods.bin "$COMMIT" result
+        run: |
+          set -euo pipefail
+          python3 tools/mod_build_once.py mods.bin "$COMMIT" result
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          status_path = Path("result/status.json")
+          status = json.loads(status_path.read_text(encoding="utf-8"))
+          if status.get("state") == "done":
+              build = status.get("build")
+              if not isinstance(build, dict):
+                  raise SystemExit("The successful build has no build metadata.")
+              build["version"] = os.environ["VERSION"]
+              status_path.write_text(
+                  json.dumps(status, separators=(",", ":")),
+                  encoding="utf-8",
+              )
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: result
@@ -70,3 +90,19 @@ jobs:
           retention-days: 1
           compression-level: 1
           if-no-files-found: error
+      - name: Publish result to the gateway release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^starling-mod-build-[0-9a-f]{32}$ ]] || {
+            echo "Invalid temporary release tag." >&2
+            exit 1
+          }
+          test -s result/status.json
+          if python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("state") != "done")' result/status.json; then
+            test -s result/libhorizon_android.so
+            gh release upload "$RELEASE_TAG" result/status.json result/libhorizon_android.so --clobber
+          else
+            gh release upload "$RELEASE_TAG" result/status.json --clobber
+          fi
