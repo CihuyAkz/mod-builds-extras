@@ -392,7 +392,7 @@ async function acceptBuild(request, env) {
   if (via !== "github") {
     return error(400, "This gateway only supports the Use GitHub (slower) build option.");
   }
-  if (!/^\d+(\.\d+){1,3}$/.test(version)) {
+  if (!/^\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version)) {
     return error(400, "That is not a version of the game.");
   }
   const contentLength = request.headers.get("Content-Length");
