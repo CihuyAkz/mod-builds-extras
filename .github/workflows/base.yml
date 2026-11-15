@@ -1,18 +1,10 @@
-name: build
-run-name: build ${{ inputs.ask }}
+name: base
+run-name: base ${{ inputs.version }}
 on:
   workflow_dispatch:
     inputs:
-      ask:
-        description: Random request key held by the build gateway
-        required: true
-        type: string
       version:
         description: A version registered in versions.json
-        required: true
-        type: string
-      gateway:
-        description: Public HTTPS URL of the build gateway
         required: true
         type: string
       source:
@@ -26,83 +18,47 @@ on:
         default: ""
         type: string
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: base-${{ inputs.version }}
+  cancel-in-progress: false
 jobs:
-  build:
+  base:
     runs-on: ubuntu-24.04
-    timeout-minutes: 70
+    timeout-minutes: 300
     env:
       VERSION: ${{ inputs.version }}
       SOURCE_REPO: ${{ inputs.source }}
       TOOLS_REPO: ${{ inputs.source }}
       TOOLS: ${{ inputs.tools }}
-      ASK: ${{ inputs.ask }}
-      GATEWAY: ${{ inputs.gateway }}
-      RELEASE_TAG: starling-mod-build-${{ inputs.ask }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Prepare source and build tools
         run: bash scripts/prepare.sh
+      - name: Install Rust, Android tools and crates
+        run: bash scripts/tools.sh
       - name: Make room
+        run: bash scripts/room.sh clean
+      - name: Build clean cache
+        env:
+          MOD_BUILD_BASE: '1'
+          MOD_BUILD_SECONDS: '14000'
         run: |
-          rm -rf "$HOME/.rustup" "$HOME/.cargo"
-          bash scripts/room.sh
-      - uses: actions/cache/restore@v4
+          job=$HOME/modbuild/jobs/base
+          mkdir -p "$job/out" "$job/mods"
+          cp -r "$HOME/modbuild/source/native-mods/wrench/mixins/wrench" "$job/mods/wrench"
+          started=$(date +%s)
+          bash tools/mod_build_sandbox.sh "$HOME/modbuild" "$COMMIT" "$job"
+          echo "Cold build: $(( $(date +%s) - started )) s"
+          du -sh "$HOME/modbuild/base" "$HOME/modbuild/cargo" "$HOME/android" "$HOME/.rustup"
+          sudo rm -rf "$job"
+      - uses: actions/cache/save@v4
         with:
           key: base-${{ env.COMMIT }}
-          fail-on-cache-miss: true
           path: |
             ~/.rustup
             ~/android
             ~/modbuild/cargo
             ~/modbuild/base
-      - name: Download requested mods
-        run: curl -fsS --retry 5 --retry-all-errors -o mods.bin "$GATEWAY/v1/github/$ASK"
-      - name: Compile native mods
-        env:
-          MOD_BUILD_SECONDS: '3200'
-        run: |
-          set -euo pipefail
-          python3 tools/mod_build_once.py mods.bin "$COMMIT" result
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          status_path = Path("result/status.json")
-          status = json.loads(status_path.read_text(encoding="utf-8"))
-          if status.get("state") == "done":
-              build = status.get("build")
-              if not isinstance(build, dict):
-                  raise SystemExit("The successful build has no build metadata.")
-              build["version"] = os.environ["VERSION"]
-              status_path.write_text(
-                  json.dumps(status, separators=(",", ":")),
-                  encoding="utf-8",
-              )
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: result
-          path: result/
-          retention-days: 1
-          compression-level: 1
-          if-no-files-found: error
-      - name: Publish result to the gateway release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^starling-mod-build-[0-9a-f]{32}$ ]] || {
-            echo "Invalid temporary release tag." >&2
-            exit 1
-          }
-          test -s result/status.json
-          if python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("state") != "done")' result/status.json; then
-            test -s result/libhorizon_android.so
-            gh release upload "$RELEASE_TAG" result/status.json result/libhorizon_android.so --clobber
-          else
-            gh release upload "$RELEASE_TAG" result/status.json --clobber
-          fi
