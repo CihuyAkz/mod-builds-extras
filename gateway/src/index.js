@@ -232,7 +232,6 @@ async function dispatchJob(env, job) {
           ask: job.ask,
           version: job.version,
           gateway: job.gateway_url,
-          release_tag: releaseTag(job),
         },
       },
     });
